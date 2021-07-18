@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH -J query
+#SBATCH --mem 2G
+#SBATCH --ntasks 1
+#SBATCH --qos bbdefault
+#SBATCH -t 00:05:00
+
+
+module purge; module load bluebear
+module load BCFtools/1.10.2-GCC-9.3.0
+
+#extract samples and top positions identified with Dsuite, then fill allele frequency AF based on groups in file SET3
+bcftools view -S samples.order.txt -R top.positions.txt \
+himalaya-samtools-feb21.vcf.gz \
+| bcftools +fill-tags -Ob -o tagged.bcf -- -S SETS3.txt -t AF
+
+#query AF for each group and get genotypes
+bcftools query tagged.bcf \
+-f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/AF_Outgroup\t%INFO/AF_Denisova\t%INFO/AF_Asian\t%INFO/AF_Lhokpu[\t%TGT]\n' > geno.txt
+
+#select derived alleles (Chimp!=Denisova) with AF=0 in Asians and AF>=0.5 in Lhop
+awk '{if ($5!=$6 && $5!="." && $6!="." && $7==0 && $8>=0.5) print $0}' geno.txt > top.txt
+
+#make same file as above but format for VEP
+awk '{if ($5!=$6 && $5!="." && $6!="." && $7==0 && $8>=0.5) print $1,$2,".",$3,$4}' geno.txt > top.vep.txt

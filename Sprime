@@ -1,0 +1,38 @@
+#!/bin/bash
+#SBATCH -J Lei
+#SBATCH --mem 10G
+#SBATCH --ntasks 1
+#SBATCH --qos castles
+#SBATCH -t 05:30:00
+
+module purge; module load bluebear
+module load BCFtools/1.10.2-GCC-9.3.0
+module load Java/1.8.0_281
+java -jar sprime.jar
+
+#download Sprime
+wget https://faculty.washington.edu/browning/sprime.jar
+
+#prepare input data for the Sprime analysis
+bcftools view --samples-file sample.txt himalaya-samtools-feb21.vcf.gz| bcftools view -c1 -m2 -M2 -v snps | bcftools annotate -x INFO,^FORMAT/GT -Oz -o sprime.vcf.gz
+
+#run Sprime to detect introgressed variants
+for i in {1..22};do java -jar sprime.jar gt=sprime.vcf.gz outgroup=outgroup.txt map=plink.chr$i.GRCh37.map chrom=${i} out=chr${i};done
+
+#calculate match rates to a known archaic
+maparch="/rds/homes/y/yxl005/Lhop/map_arch"
+for chr in {1..22}; do
+script=o.script.${chr}.sh
+#map variants to the Denisovan genome
+bedfile="/rds/projects/h/haberm-resource/himalaya-samtools-feb21/Archaic/Vindija/FilterBed/Denisova/chr${chr}_mask.bed.gz"
+archaicfile="/rds/projects/h/haberm-resource/himalaya-samtools-feb21/Archaic/Vindija/VCF/Denisova/chr${chr}_mq25_mapab100.vcf.gz"
+reftag="AltaiDeni"
+scorefile="chr${chr}.score"
+outmscore="out.chr${chr}.mscore"
+tmpprefix=${RANDOM}
+echo "
+#! /bin/bash
+${maparch} --kp --sep '\t' --tag ${reftag} --mskbed ${bedfile} --vcf ${archaicfile} --score ${scorefile} > ${tmpprefix}tmp1.${chr}.mscore
+" >${script}
+sh ${script}
+done
